@@ -115,13 +115,22 @@ fn main() {
             result.unwrap()
         },
         false => {
+            let compiler = Compiler::new();
+
             let data: Vec<char> = std::fs::read_to_string(path)
                                     .expect("Invalid file")
                                     .chars().collect();
         
-            let compiler = Compiler::new();
             let mut lexer = Lexer::new(data);
             lexer.tokenize(&vec![String::from("src")], &compiler, false).expect("Invalid stuff happened :(");
+
+            if let Ok(std_file) = std::fs::read_to_string("std.bf") {
+                let std_data: Vec<char> = std_file.chars().collect();
+                let mut std_lexer = Lexer::new(std_data);
+                std_lexer.tokenize(&vec![String::from("std")], &compiler, false).expect("Invalid std stuff happened :(");
+            }else{
+                println!("WARNING: Standard library could not be loaded");
+            }
 
             compiler.finish_compilation().expect("Invalid compilation");
             assert!(compiler.is_done(), "All dependencies couldn't be resolved");

@@ -1,20 +1,12 @@
-#/kajiit
 
-:kajiit {
-    #use src/print/start
-    #use src/print/end
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-    #/start
-        "Kajiit! :)\n"
-    #/end
-}
-
-:print {
-    :start {
-        [-]->
-    }
-
-    :end {
-        +[-<+]-> [.>]
-    }
-}
+#std/print/start
+    "Hello world!\n"
+    "This is my friend, Olaf!\n"
+    "He is a snowman!\n"
+    "But alas, he wants to feel the heat of the summer...\n"
+    "I feel bad for him :(\n"
+    "...\n"
+    "( Press key to continue )"
+#std/print/end
