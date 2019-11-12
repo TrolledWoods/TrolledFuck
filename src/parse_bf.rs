@@ -127,17 +127,46 @@ impl Lexer {
         }
     }
 
-    fn parse_value(&mut self, path: &Vec<String>, commands: &mut Vec<Token>, dependencies: &mut HashSet<String>) -> Result<(), String> {
+    fn parse_value(&mut self, compiler: &Compiler, path: &Vec<String>, commands: &mut Vec<Token>, dependencies: &mut HashSet<String>) -> Result<(), String> {
         if let Some(c) = self.text.get(self.loc) {
             self.loc += 1;
             match *c {
                 '#' => {
                     let mut identifier = self.read_identifier().ok_or_else(|| String::from("Expected identifier"))?;
                     
-                    pathify_identifier(path, &mut identifier)?;
+                    if identifier == "use" {
+                        // This just defines a macro that is set to another macro, 
+                        // i.e "#use /long/path/name" <=> ":name { #/long/path/name }"
+                        self.skip_whitespace();
 
-                    dependencies.insert(String::from(&identifier));
-                    commands.push(Token::new_macro(self.loc - 1, identifier));
+                        // Get the path of the macro to import into current scope
+                        let start = self.loc;
+                        let mut identifier = self.read_identifier().ok_or_else(|| String::from("Expected identifier"))?;
+                        pathify_identifier(path, &mut identifier)?;
+
+                        // Create some strings that are going to be passed into datastructures later
+                        let identifier_dep = String::from(&identifier);
+                        let identifier_token = String::from(&identifier);
+
+                        // Figure out the path that the import is going to be set to
+                        let mut name = String::from(identifier.split('/').rev().next().unwrap());
+                        name.insert(0, '/');
+                        name.insert_str(0, &path.join("/")[..]);
+                        
+                        // Add the macro to the compilers list of things to compile
+                        let mut dep = HashSet::with_capacity(1);
+                        dep.insert(identifier_dep);
+                        compiler.add_compilation_unit(
+                                String::from(name), 
+                                vec![Token::new_macro(start, identifier_token)], 
+                                dep
+                            );
+                    }else{
+                        pathify_identifier(path, &mut identifier)?;
+
+                        dependencies.insert(String::from(&identifier));
+                        commands.push(Token::new_macro(self.loc - 1, identifier));
+                    }
                 },
                 '"' => {
                     let mut contents = String::new();
@@ -166,7 +195,7 @@ impl Lexer {
                     // return Err(String::from("Expected '\"' to end string"));
                 },
                 '[' => {
-                    self.read_loop(path, commands, dependencies)?;
+                    self.read_loop(compiler, path, commands, dependencies)?;
                 },
                 '+' => commands.push(Token::new_increment(self.loc - 1, 1)),
                 '-' => commands.push(Token::new_decrement(self.loc - 1, 1)),
@@ -182,7 +211,7 @@ impl Lexer {
     }
 
     // This function also generates the initial command for the loop, so don't worry ;)
-    fn read_loop(&mut self, path: &Vec<String>, commands: &mut Vec<Token>, dependencies: &mut HashSet<String>) -> Result<(), String> {
+    fn read_loop(&mut self, compiler: &Compiler, path: &Vec<String>, commands: &mut Vec<Token>, dependencies: &mut HashSet<String>) -> Result<(), String> {
         let start = self.loc;
         let mut contents = Vec::new();
 
@@ -192,7 +221,7 @@ impl Lexer {
                 commands.push(Token::new_loop(start - 1, contents));
                 return Ok(());
             }else{
-                self.parse_value(path, &mut contents, dependencies)?;
+                self.parse_value(compiler, path, &mut contents, dependencies)?;
             }
         }
 
@@ -208,7 +237,7 @@ impl Lexer {
                 self.loc += 1;
                 // A macro definition!
                 let identifier = self.read_identifier().ok_or_else(|| String::from("Expected identifier"))?;
-                if identifier.contains(";") {
+                if identifier.contains("/") {
                     return Err(String::from("Cannot define a macro with ';' in identifier"));
                 }
                 self.skip_whitespace();
@@ -230,7 +259,7 @@ impl Lexer {
                     return Err(String::from("Unexpected '}'"));
                 }
             }else{
-                self.parse_value(name, &mut commands, &mut dependencies)?;
+                self.parse_value(compiler, name, &mut commands, &mut dependencies)?;
             }
         }
 
@@ -262,8 +291,6 @@ fn pathify_identifier(path: &Vec<String>, identifier: &mut String) -> Result<(),
             identifier.insert_str(0, elem);
         }
     }
-
-    println!("identifier: {}", identifier);
 
     Ok(())
 }

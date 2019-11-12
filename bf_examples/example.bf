@@ -1,23 +1,20 @@
-#/print_start 
-    "hello world!" 
-#/print
+#/kajiit
+
+:kajiit {
+    #use src/print/start
+    #use src/print/end
+
+    #/start
+        "Kajiit! :)\n"
+    #/end
+}
 
 :print {
-    +[-<+]-> [.>]
-}
-
-:print_start_real {
-    [-]->
-}
-
-:print_start {
-    
-
-    :kajiit {
-        #src/print_start 
-            "Kajiit!" 
-        #src/print
+    :start {
+        [-]->
     }
 
-    #./print_start_real
+    :end {
+        +[-<+]-> [.>]
+    }
 }
