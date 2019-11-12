@@ -1,5 +1,171 @@
 use crate::instructions::*;
-use std::collections::HashMap;
+use std::collections::{ HashMap, HashSet };
+use std::sync::{ Mutex };
+
+pub struct Compiler {
+    pub id_map: Mutex<HashMap<String, u16>>,
+    pub ready_to_compile: Mutex<HashSet<u16>>,
+    pub n_values: Mutex<u16>,
+    pub compiled: Mutex<HashMap<u16, Vec<u8>>>,
+    pub not_compiled: Mutex<HashMap<u16, (HashSet<u16>, Vec<Token>)>>,
+    pub dependencies: Mutex<HashMap<u16, Vec<u16>>>
+}
+
+impl Compiler {
+    pub fn new() -> Compiler {
+        Compiler {
+            id_map: Mutex::new(HashMap::new()),
+            n_values: Mutex::new(0),
+            ready_to_compile: Mutex::new(HashSet::new()),
+            compiled: Mutex::new(HashMap::new()),
+            not_compiled: Mutex::new(HashMap::new()),
+            dependencies: Mutex::new(HashMap::new())
+        }
+    }
+
+    pub fn is_done(&self) -> bool {
+        self.not_compiled.lock().unwrap().len() == 0
+    }
+
+    pub fn get_identifier_or_create(&self, identifier: &String) -> u16 {
+        let mut id_map = self.id_map.lock().unwrap();
+        if let Some(id) = id_map.get(identifier) {
+            *id
+        }else{
+            let mut n_values = self.n_values.lock().unwrap();
+            let new_id = *n_values;
+            *n_values += 1;
+            id_map.insert(String::from(identifier), new_id);
+            new_id
+        }
+    }
+
+    pub fn add_dependencies(&self, source: u16, dependencies: &Vec<String>) -> u16 {
+        let mut n_unresolved = 0;
+        let mut depend = self.dependencies.lock().unwrap();
+        for dependency in dependencies {
+            let id = self.get_identifier_or_create(dependency);
+
+            if let Some(vector) = depend.get_mut(&id) {
+                // The dependency vector exists in the dependency HashMap, so push onto that
+                n_unresolved += 1;
+                vector.push(source);
+                continue;
+            }
+
+            if self.compiled.lock().unwrap().contains_key(&id) {
+                // It's actually resolved already! :D
+                continue;
+            }
+
+            // It didn't exist in the dependencies, so insert a vector of dependencies onto that
+            n_unresolved += 1;
+            depend.insert(id, vec![source]);
+        }
+
+        n_unresolved
+    }
+
+    fn compile(&self, element: u16) -> Result<(), String> {
+        let (dependencies, ast) = self.not_compiled.lock().unwrap()
+                        .remove(&element)
+                        .expect("compile: element was an invalid id");
+        assert_eq!(dependencies.len(), 0, "Tried compiling element without resolving dependencies first");
+
+        let mut commands = Vec::new();
+        for token in ast {
+            commands.append(&mut compile_node(self, &token, &String::new())?);
+        }
+
+        self.compiled.lock().unwrap().insert(element, commands);
+        if let Some(dependants) = self.dependencies.lock().unwrap().remove(&element) {
+            for dependant in dependants {
+                let mut lock = self.not_compiled.lock().unwrap();
+                let (dependencies, _) = lock.get_mut(&dependant)
+                                            .expect("compile: Dependant compiled before it's dependency? Makes no sense!");
+                dependencies.remove(&element);
+            }
+        }
+
+        Ok(())
+    }
+    
+    pub fn add_compilation_unit(&self, name: String, data: Vec<Token>, dependencies: Vec<String>) {
+        let id = self.get_identifier_or_create(&name);
+        
+        let unresolved_dependencies = self.add_dependencies(id, &dependencies);
+        if unresolved_dependencies > 0 {
+            unimplemented!();
+        }else{
+            self.ready_to_compile.lock().unwrap().insert(id);
+        }
+    }
+}
+
+pub enum TokenType {
+    Str(String),
+    Macro(String),
+    Loop(Vec<Token>),
+    Increment(u8),
+    Decrement(u8),
+    ShiftRight(u8),
+    ShiftLeft(u8),
+    Print,
+    Read
+}
+
+pub struct Token {
+    pub src_loc: usize,
+    pub data: TokenType
+}
+
+pub enum NamespaceMember {
+    Uncompiled(bool, Vec<Token>),
+    Compiled(Vec<u8>)
+}
+
+pub fn create_loop(contained_commands: Vec<u8>) -> Vec<u8> {
+    let mut contained_commands = contained_commands;
+    let offset = contained_commands.len() + 5;
+
+    contained_commands.reserve(10);
+    contained_commands.insert(0, LOOP_OPEN);
+    contained_commands.insert(1, (offset & 0xff) as u8);
+    contained_commands.insert(2, ((offset >> 8) & 0xff) as u8);
+    contained_commands.insert(3, ((offset >> 16) & 0xff) as u8);
+    contained_commands.insert(4, ((offset >> 24) & 0xff) as u8);
+    
+    let offset = offset - 5;
+    contained_commands.push(LOOP_CLOSE);
+    contained_commands.push(( offset        & 0xff) as u8);
+    contained_commands.push(((offset >> 8 ) & 0xff) as u8);
+    contained_commands.push(((offset >> 16) & 0xff) as u8);
+    contained_commands.push(((offset >> 24) & 0xff) as u8);
+
+    contained_commands
+}
+
+pub fn compile_node(macros: &Compiler, token: &Token, src_path: &String) -> Result<Vec<u8>, String> {
+    use TokenType::*;
+    match &token.data {
+        Str(string) => unimplemented!(),
+        Macro(name) => unimplemented!(),
+        Loop(sub_tokens) => {
+            let mut contents = Vec::new();
+            for sub_token in sub_tokens.iter() {
+                contents.append(&mut compile_node(macros, sub_token, src_path)?);
+            }
+
+            Ok(create_loop(contents))
+        },
+        ShiftRight(amount) => Ok(vec![SHIFT_RIGHT]),
+        ShiftLeft(amount) => Ok(vec![SHIFT_LEFT]),
+        Increment(amount) => Ok(vec![INCREMENT]),
+        Decrement(amount) => Ok(vec![DECREMENT]),
+        Print => Ok(vec![PRINT]),
+        Read => Ok(vec![READ])
+    }
+}
 
 pub struct Lexer {
     text: Vec<char>,
