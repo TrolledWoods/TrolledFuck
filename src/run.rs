@@ -54,7 +54,7 @@ pub fn execute_bf(bf: &Vec<u8>, modifiers: &Modifiers) {
                 if modifiers.is_debug { println!("PRINT"); 
                     println!("Output: '{}'", memory.get(mem_ptr) as char);
                 }else{
-                    print!("{}", memory.get(mem_ptr) as char);
+                    print!("🧙{}", memory.get(mem_ptr) as char);
                 }
                 instr_ptr += 1;
             },

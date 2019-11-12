@@ -1,5 +1,11 @@
 ; STANDARD LIBRARBY
 
+🧙🧙 🧙 🧙 🧙 🧙 🧙 
+🧙 🧙 
+🧙 🧙 🧙 🧙 🧙 
+🧙 THIS IS BLACK MAGIC!! 🧙 
+MAGIC
+
 #std/print/start
     "\n\n----STD----\n\nThe std library cannot be exectued\n"
     "Or well, it can, but it isn't really recommended\n"
