@@ -112,7 +112,7 @@ impl Lexer {
         let mut identifier = String::new();
         
         while let Some(c) = self.text.get(self.loc) {
-            if c.is_alphabetic() || (identifier.len() >= 1 && c.is_numeric()) || *c == ';' || *c == '_' {
+            if c.is_alphabetic() || (identifier.len() >= 1 && c.is_numeric()) || *c == '/' || *c == '_' || *c == '.' {
                 self.loc += 1;
                 identifier.push(*c);
             }else{
@@ -127,13 +127,15 @@ impl Lexer {
         }
     }
 
-    fn parse_value(&mut self, commands: &mut Vec<Token>, dependencies: &mut HashSet<String>) -> Result<(), String> {
+    fn parse_value(&mut self, path: &Vec<String>, commands: &mut Vec<Token>, dependencies: &mut HashSet<String>) -> Result<(), String> {
         if let Some(c) = self.text.get(self.loc) {
             self.loc += 1;
             match *c {
                 '#' => {
-                    let identifier = self.read_identifier().ok_or_else(|| String::from("Expected identifier"))?;
+                    let mut identifier = self.read_identifier().ok_or_else(|| String::from("Expected identifier"))?;
                     
+                    pathify_identifier(path, &mut identifier)?;
+
                     dependencies.insert(String::from(&identifier));
                     commands.push(Token::new_macro(self.loc - 1, identifier));
                 },
@@ -164,7 +166,7 @@ impl Lexer {
                     // return Err(String::from("Expected '\"' to end string"));
                 },
                 '[' => {
-                    self.read_loop(commands, dependencies)?;
+                    self.read_loop(path, commands, dependencies)?;
                 },
                 '+' => commands.push(Token::new_increment(self.loc - 1, 1)),
                 '-' => commands.push(Token::new_decrement(self.loc - 1, 1)),
@@ -180,30 +182,24 @@ impl Lexer {
     }
 
     // This function also generates the initial command for the loop, so don't worry ;)
-    fn read_loop(&mut self, commands: &mut Vec<Token>, dependencies: &mut HashSet<String>) -> Result<(), String> {
+    fn read_loop(&mut self, path: &Vec<String>, commands: &mut Vec<Token>, dependencies: &mut HashSet<String>) -> Result<(), String> {
         let start = self.loc;
-        let start_loc = commands.len();
-
         let mut contents = Vec::new();
 
         while let Some(c) = self.text.get(self.loc) {
             if *c == ']' {
                 self.loc += 1;
-
-                let end_loc = commands.len();
-                let offset = end_loc - start_loc;
-
                 commands.push(Token::new_loop(start - 1, contents));
                 return Ok(());
             }else{
-                self.parse_value(&mut contents, dependencies)?;
+                self.parse_value(path, &mut contents, dependencies)?;
             }
         }
 
         Err(String::from("Expected ']' to end loop"))
     }
 
-    pub fn tokenize(&mut self, name: String, compiler: &Compiler, terminatable: bool) -> Result<(), String> {
+    pub fn tokenize(&mut self, name: &Vec<String>, compiler: &Compiler, terminatable: bool) -> Result<(), String> {
         let mut commands = Vec::new();
         let mut dependencies = HashSet::new();
 
@@ -222,7 +218,9 @@ impl Lexer {
                 }
                 self.loc += 1;
 
-                self.tokenize(identifier, compiler, true)?;
+                let mut sub_name = name.clone();
+                sub_name.push(identifier);
+                self.tokenize(&sub_name, compiler, true)?;
             }else if *c == '}' {
                 self.loc += 1;
 
@@ -232,12 +230,40 @@ impl Lexer {
                     return Err(String::from("Unexpected '}'"));
                 }
             }else{
-                self.parse_value(&mut commands, &mut dependencies)?;
+                self.parse_value(name, &mut commands, &mut dependencies)?;
             }
         }
 
-        compiler.add_compilation_unit(name, commands, dependencies);
+        compiler.add_compilation_unit(name.join("/"), commands, dependencies);
 
         Ok(())
     }
+}
+
+fn pathify_identifier(path: &Vec<String>, identifier: &mut String) -> Result<(), String> {
+    if identifier.get(0..1).unwrap() == "/" {
+        identifier.insert_str(0, &path.join("/")[..]);
+    }else if identifier.get(0..1).unwrap() == "." {
+        let mut n_dots = 0;
+        while identifier.get(0..1).ok_or_else(|| String::from("Expected '/' after dots in identifier"))? == "." {
+            identifier.remove(0);
+            n_dots += 1;
+        }
+
+        if identifier.get(0..1).unwrap() != "/" {
+            return Err(String::from("Faulty path: Expected '..../', got '....'"));
+        }
+
+        let sub_path = &path[0..(path.len() - n_dots)];
+        for (i, elem) in sub_path.iter().enumerate() {
+            if i > 0 {
+                identifier.insert(0, '/');
+            }
+            identifier.insert_str(0, elem);
+        }
+    }
+
+    println!("identifier: {}", identifier);
+
+    Ok(())
 }

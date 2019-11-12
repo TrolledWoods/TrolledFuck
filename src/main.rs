@@ -121,12 +121,12 @@ fn main() {
         
             let compiler = Compiler::new();
             let mut lexer = Lexer::new(data);
-            lexer.tokenize(String::from("main"), &compiler, false).expect("Invalid stuff happened :(");
+            lexer.tokenize(&vec![String::from("src")], &compiler, false).expect("Invalid stuff happened :(");
 
             compiler.finish_compilation().expect("Invalid compilation");
             assert!(compiler.is_done(), "All dependencies couldn't be resolved");
 
-            compiler.get_compiled_value("main").expect("Didn't compile! :(")
+            compiler.get_compiled_value("src").expect("Didn't compile! :(")
         }
     };
 
