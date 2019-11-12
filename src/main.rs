@@ -7,7 +7,10 @@ pub mod inf_memory;
 pub use inf_memory::Memory;
 
 pub mod parse_bf;
-pub use parse_bf::Lexer;
+pub use parse_bf::{ Lexer };
+
+pub mod compiler;
+pub use compiler::{ Compiler };
 
 pub mod instructions {
     pub const SHIFT_RIGHT: u8 = 0x00;
@@ -116,14 +119,14 @@ fn main() {
                                     .expect("Invalid file")
                                     .chars().collect();
         
+            let compiler = Compiler::new();
             let mut lexer = Lexer::new(data);
-            match lexer.tokenize(false) {
-                Ok((commands, _)) => commands,
-                Err(error) => {
-                    println!("Error: {}", error);
-                    return;
-                }
-            }
+            lexer.tokenize(String::from("main"), &compiler, false).expect("Invalid stuff happened :(");
+
+            compiler.finish_compilation().expect("Invalid compilation");
+            assert!(compiler.is_done(), "All dependencies couldn't be resolved");
+
+            compiler.get_compiled_value("main").expect("Didn't compile! :(")
         }
     };
 
