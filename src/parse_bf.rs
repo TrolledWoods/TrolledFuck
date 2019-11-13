@@ -16,68 +16,68 @@ pub enum TokenType {
 
 #[derive(Debug)]
 pub struct Token {
-    pub src_loc: usize,
+    pub src_loc: Loc,
     pub data: TokenType
 }
 
 impl Token {
-    pub fn new_str(loc: usize, data: String) -> Token {
+    pub fn new_str(loc: Loc, data: String) -> Token {
         Token {
             src_loc: loc,
             data: TokenType::Str(data)
         }
     }
 
-    pub fn new_macro(loc: usize, identifier: String) -> Token {
+    pub fn new_macro(loc: Loc, identifier: String) -> Token {
         Token {
             src_loc: loc,
             data: TokenType::Macro(identifier)
         }
     }
 
-    pub fn new_loop(loc: usize, sub_tokens: Vec<Token>) -> Token {
+    pub fn new_loop(loc: Loc, sub_tokens: Vec<Token>) -> Token {
         Token {
             src_loc: loc,
             data: TokenType::Loop(sub_tokens)
         }
     }
 
-    pub fn new_increment(loc: usize, n_times: u8) -> Token {
+    pub fn new_increment(loc: Loc, n_times: u8) -> Token {
         Token {
             src_loc: loc,
             data: TokenType::Increment(n_times)
         }
     }
     
-    pub fn new_decrement(loc: usize, n_times: u8) -> Token {
+    pub fn new_decrement(loc: Loc, n_times: u8) -> Token {
         Token {
             src_loc: loc,
             data: TokenType::Decrement(n_times)
         }
     }
 
-    pub fn new_shift_right(loc: usize, n_times: u8) -> Token {
+    pub fn new_shift_right(loc: Loc, n_times: u8) -> Token {
         Token {
             src_loc: loc,
             data: TokenType::ShiftRight(n_times)
         }
     }
 
-    pub fn new_shift_left(loc: usize, n_times: u8) -> Token {
+    pub fn new_shift_left(loc: Loc, n_times: u8) -> Token {
         Token {
             src_loc: loc,
             data: TokenType::ShiftLeft(n_times)
         }
     }
 
-    pub fn new_print(loc: usize) -> Token {
+    pub fn new_print(loc: Loc) -> Token {
         Token {
             src_loc: loc,
             data: TokenType::Print
         }
     }
 
-    pub fn new_read(loc: usize) -> Token {
+    pub fn new_read(loc: Loc) -> Token {
         Token {
             src_loc: loc,
             data: TokenType::Read
@@ -85,23 +85,68 @@ impl Token {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Loc {
+    line: usize, 
+    _char: usize,
+    index: usize
+}
+
+impl Loc {
+    pub fn zero() -> Loc {
+        Loc {
+            line: 0,
+            _char: 0,
+            index: 0
+        }
+    }
+
+    pub fn add_n_chars(&mut self, amount: usize) {
+        self._char += amount;
+        self.index += amount;
+    }
+
+    pub fn add_n_lines(&mut self, amount: usize) {
+        self.line += amount;
+        self.index += amount;
+    }
+
+    pub fn move_with(&mut self, c: char) {
+        self.index += 1;
+        
+        if c == '\n' {
+            self.line += 1;
+            self._char = 0;
+        }else {
+            self._char += 1;
+        }
+    }
+}
+
+impl std::fmt::Display for Loc {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {})", self.line, self._char)?;
+        Ok(())
+    }
+}
+
 pub struct Lexer {
     text: Vec<char>,
-    loc: usize
+    loc: Loc
 }
 
 impl Lexer {
     pub fn new(text: Vec<char>) -> Lexer {
         Lexer {
             text: text,
-            loc: 0
+            loc: Loc::zero()
         }
     }
 
     fn skip_whitespace(&mut self) {
-        while let Some(c) = self.text.get(self.loc) {
+        while let Some(c) = self.text.get(self.loc.index) {
             if c.is_whitespace() {
-                self.loc += 1;
+                self.loc.move_with(*c);
             }else{
                 break;
             }
@@ -111,9 +156,9 @@ impl Lexer {
     fn read_identifier(&mut self) -> Option<String> {
         let mut identifier = String::new();
         
-        while let Some(c) = self.text.get(self.loc) {
+        while let Some(c) = self.text.get(self.loc.index) {
             if c.is_alphabetic() || (identifier.len() >= 1 && c.is_numeric()) || *c == '/' || *c == '_' || *c == '.' {
-                self.loc += 1;
+                self.loc.add_n_chars(1);
                 identifier.push(*c);
             }else{
                 break;
@@ -128,8 +173,8 @@ impl Lexer {
     }
 
     fn parse_value(&mut self, compiler: &Compiler, path: &Vec<String>, commands: &mut Vec<Token>, dependencies: &mut HashSet<String>) -> Result<(), String> {
-        if let Some(c) = self.text.get(self.loc) {
-            self.loc += 1;
+        if let Some(c) = self.text.get(self.loc.index) {
+            self.loc.move_with(*c);
             match *c {
                 '#' => {
                     let mut identifier = self.read_identifier().ok_or_else(|| String::from("Expected identifier"))?;
@@ -165,20 +210,20 @@ impl Lexer {
                         pathify_identifier(path, &mut identifier)?;
 
                         dependencies.insert(String::from(&identifier));
-                        commands.push(Token::new_macro(self.loc - 1, identifier));
+                        commands.push(Token::new_macro(self.loc, identifier));
                     }
                 },
                 '"' => {
                     let mut contents = String::new();
-                    let start = self.loc - 1;
-                    while let Some(c) = self.text.get(self.loc) {
-                        self.loc += 1;
+                    let start = self.loc;
+                    while let Some(c) = self.text.get(self.loc.index) {
+                        self.loc.move_with(*c);
                         if *c == '"' {
                             commands.push(Token::new_str(start, String::from(contents)));
                             break;
                         }else if *c == '\\' {
-                            if let Some(next_c) = self.text.get(self.loc) {
-                                self.loc += 1;
+                            if let Some(next_c) = self.text.get(self.loc.index) {
+                                self.loc.move_with(*next_c);
 
                                 match *next_c {
                                     'n' => contents.push('\n'),
@@ -197,12 +242,12 @@ impl Lexer {
                 '[' => {
                     self.read_loop(compiler, path, commands, dependencies)?;
                 },
-                '+' => commands.push(Token::new_increment(self.loc - 1, 1)),
-                '-' => commands.push(Token::new_decrement(self.loc - 1, 1)),
-                '<' => commands.push(Token::new_shift_left(self.loc - 1, 1)),
-                '>' => commands.push(Token::new_shift_right(self.loc - 1, 1)),
-                ',' => commands.push(Token::new_read(self.loc - 1)),
-                '.' => commands.push(Token::new_print(self.loc - 1)),
+                '+' => commands.push(Token::new_increment(self.loc, 1)),
+                '-' => commands.push(Token::new_decrement(self.loc, 1)),
+                '<' => commands.push(Token::new_shift_left(self.loc, 1)),
+                '>' => commands.push(Token::new_shift_right(self.loc, 1)),
+                ',' => commands.push(Token::new_read(self.loc)),
+                '.' => commands.push(Token::new_print(self.loc)),
                 _ => {}
             }
         }
@@ -215,10 +260,10 @@ impl Lexer {
         let start = self.loc;
         let mut contents = Vec::new();
 
-        while let Some(c) = self.text.get(self.loc) {
+        while let Some(c) = self.text.get(self.loc.index) {
             if *c == ']' {
-                self.loc += 1;
-                commands.push(Token::new_loop(start - 1, contents));
+                self.loc.move_with(*c);
+                commands.push(Token::new_loop(start, contents));
                 return Ok(());
             }else{
                 self.parse_value(compiler, path, &mut contents, dependencies)?;
@@ -232,26 +277,28 @@ impl Lexer {
         let mut commands = Vec::new();
         let mut dependencies = HashSet::new();
 
-        while let Some(c) = self.text.get(self.loc) {
+        while let Some(c) = self.text.get(self.loc.index) {
             if *c == ':' {
-                self.loc += 1;
+                self.loc.add_n_chars(1);
+
                 // A macro definition!
                 let identifier = self.read_identifier().ok_or_else(|| String::from("Expected identifier"))?;
                 if identifier.contains("/") {
                     return Err(String::from("Cannot define a macro with ';' in identifier"));
                 }
                 self.skip_whitespace();
-                let c = self.text.get(self.loc).ok_or_else(|| String::from("Unexpected end of file, expected '{'"))?;
+                let c = self.text.get(self.loc.index)
+                    .ok_or_else(|| String::from("Unexpected end of file, expected '{'"))?;
                 if *c != '{' {
                     return Err(String::from("Expected '{'"));
                 }
-                self.loc += 1;
+                self.loc.move_with(*c);
 
                 let mut sub_name = name.clone();
                 sub_name.push(identifier);
                 self.tokenize(&sub_name, compiler, true)?;
             }else if *c == '}' {
-                self.loc += 1;
+                self.loc.add_n_chars(1);
 
                 if terminatable {
                     break;

@@ -1,3 +1,5 @@
+extern crate ansi_term;
+use ansi_term::Colour;
 use std::env;
 
 pub mod run;
@@ -97,6 +99,10 @@ fn read_command_line_args<'a>(args: &'a Vec<String>) -> (&'a str, Modifiers) {
 }
 
 fn main() {
+    if ansi_term::enable_ansi_support().is_err() {
+        println!("Couldn't enable console color, so you'll be stuck with monocrome..");
+    }
+    
     // Command line arguments
     let mut args: Vec<String> = env::args().collect();
     args.remove(0);

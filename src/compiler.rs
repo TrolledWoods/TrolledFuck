@@ -161,21 +161,23 @@ pub fn create_loop(contained_commands: Vec<u8>) -> Vec<u8> {
     use crate::instructions::*;
 
     let mut contained_commands = contained_commands;
-    let offset = contained_commands.len() + 5;
+    let offset = contained_commands.len();
 
     contained_commands.reserve(10);
+    contained_commands.push(LOOP_CLOSE);
+    contained_commands.push(( offset        & 0xff) as u8);
+    contained_commands.push(((offset >> 8 ) & 0xff) as u8);
+    contained_commands.push(((offset >> 16) & 0xff) as u8);
+    contained_commands.push(((offset >> 24) & 0xff) as u8);
+
+
+    let offset = offset + 10;
     contained_commands.insert(0, LOOP_OPEN);
     contained_commands.insert(1, (offset & 0xff) as u8);
     contained_commands.insert(2, ((offset >> 8) & 0xff) as u8);
     contained_commands.insert(3, ((offset >> 16) & 0xff) as u8);
     contained_commands.insert(4, ((offset >> 24) & 0xff) as u8);
     
-    let offset = offset - 5;
-    contained_commands.push(LOOP_CLOSE);
-    contained_commands.push(( offset        & 0xff) as u8);
-    contained_commands.push(((offset >> 8 ) & 0xff) as u8);
-    contained_commands.push(((offset >> 16) & 0xff) as u8);
-    contained_commands.push(((offset >> 24) & 0xff) as u8);
 
     contained_commands
 }
