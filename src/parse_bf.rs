@@ -11,7 +11,8 @@ pub enum TokenType {
     ShiftRight(u8),
     ShiftLeft(u8),
     Print,
-    Read
+    Read,
+    Debug
 }
 
 #[derive(Debug)]
@@ -21,6 +22,13 @@ pub struct Token {
 }
 
 impl Token {
+    pub fn new_debug(loc: Loc) -> Token {
+        Token {
+            src_loc: loc,
+            data: TokenType::Debug
+        }
+    } 
+
     pub fn new_str(loc: Loc, data: String) -> Token {
         Token {
             src_loc: loc,
@@ -176,6 +184,9 @@ impl Lexer {
         if let Some(c) = self.text.get(self.loc.index) {
             self.loc.move_with(*c);
             match *c {
+                '!' => {
+                    commands.push(Token::new_debug(self.loc));
+                },
                 '#' => {
                     let mut identifier = self.read_identifier().ok_or_else(|| String::from("Expected identifier"))?;
                     

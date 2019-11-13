@@ -1,5 +1,4 @@
 extern crate ansi_term;
-use ansi_term::Colour;
 use std::env;
 
 pub mod run;
@@ -23,6 +22,7 @@ pub mod instructions {
     pub const LOOP_CLOSE: u8 = 0x05;
     pub const PRINT: u8 = 0x06;
     pub const READ: u8 = 0x07;
+    pub const DEBUG: u8 = 0x08;
 }
 
 pub struct Modifiers {
@@ -203,6 +203,7 @@ fn print_bf_bin(bf: &Vec<u8>) {
     while index < bf.len() {
         use instructions::*;
         match bf[index] {
+            DEBUG => {},
             SHIFT_LEFT => text.push('<'),
             SHIFT_RIGHT => text.push('>'),
             INCREMENT => text.push('+'),

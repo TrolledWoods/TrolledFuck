@@ -247,6 +247,7 @@ pub fn compile_node(macros: &Compiler, token: &Token, src_path: &String) -> Resu
     use crate::instructions::*;
     use TokenType::*;
     match &token.data {
+        Debug => Ok(vec![DEBUG]),
         Str(string) => Ok(compile_str(&string[..])?),
         Macro(name) => {
             Ok(macros.get_compiled_value(&name[..]).expect("Dependency wasn't compiled"))

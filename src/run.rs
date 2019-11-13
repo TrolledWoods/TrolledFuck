@@ -1,5 +1,5 @@
 use crate::Modifiers;
-use crate::instructions::{ SHIFT_LEFT, SHIFT_RIGHT, INCREMENT, DECREMENT, READ, PRINT, LOOP_OPEN, LOOP_CLOSE };
+use crate::instructions::*;
 use crate::Memory;
 
 fn shift_style()  -> ansi_term::Style { ansi_term::Color::Purple.bold() }
@@ -17,9 +17,12 @@ pub fn execute_bf(bf: &Vec<u8>, modifiers: &Modifiers) {
     let mut print_buf = String::with_capacity(200);
 
     while instr_ptr < bf.len() {
-        if modifiers.is_debug {
+        let print_debug_info = modifiers.is_debug != (bf[instr_ptr] == DEBUG);
+        if print_debug_info {
             print!("instr: {:.>4X}, mem: {:.>4X} | ", instr_ptr, mem_ptr);
         }
+
+
         match bf[instr_ptr] {
             SHIFT_LEFT => {
                 if modifiers.is_debug { println!("{}", shift_style().paint("SHIFT_LEFT")); }
@@ -114,9 +117,37 @@ pub fn execute_bf(bf: &Vec<u8>, modifiers: &Modifiers) {
                     instr_ptr -= offset;
                 }
             },
+            DEBUG => {
+                println!("DEBUG_DUMP");
+                instr_ptr += 1;
+            },
             _ => {
                 panic!("Invalid instruction!");
             }
+        }
+
+        if print_debug_info {
+
+            const HALF_MEM_DISPLAY: isize = 6;
+
+            print!("Memory: ");
+            let mut display_mem_ptr = mem_ptr - HALF_MEM_DISPLAY;
+            for _ in 0..HALF_MEM_DISPLAY {
+                print!("{:0>2X} ", memory.get(display_mem_ptr));
+                display_mem_ptr += 1;
+            }
+
+            print!("{}", shift_style().paint(format!("{:0>2X} ", memory.get(display_mem_ptr))));
+            assert_eq!(display_mem_ptr, mem_ptr);
+            display_mem_ptr += 1;
+            for _ in 0..HALF_MEM_DISPLAY {
+                print!("{:0>2X} ", memory.get(display_mem_ptr));
+                display_mem_ptr += 1;
+            }
+            println!("");
+            println!("        {}^ {:.>4X}", "   ".repeat(HALF_MEM_DISPLAY as usize), mem_ptr);
+
+            println!("");
         }
     }
     
