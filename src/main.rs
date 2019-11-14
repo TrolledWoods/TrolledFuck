@@ -25,6 +25,28 @@ pub mod instructions {
     pub const DEBUG: u8 = 0x08;
 }
 
+pub type CompileResult<T> = Result<T, Vec<Error>>;
+
+pub struct Error {
+    pub loc: parse_bf::Loc,
+    pub msg: String
+}
+
+impl Error {
+    pub fn new(loc: parse_bf::Loc, msg: String) -> Error {
+        Error {
+            loc: loc,
+            msg: msg
+        }
+    }
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ERROR {}: '{}'", self.loc, self.msg)
+    }
+}
+
 pub struct Modifiers {
     is_debug: bool,
     std_in: String,
@@ -128,12 +150,26 @@ fn main() {
                                     .chars().collect();
         
             let mut lexer = Lexer::new(data);
-            lexer.tokenize(&vec![String::from("src")], &compiler, false).expect("Invalid stuff happened :(");
+            if let Err(errors) = lexer.tokenize(&vec![String::from("src")], &compiler, false) {
+                for error in &errors {
+                    println!("{}", error);
+                }
+
+                println!("\n{} errors, yay!", errors.len());
+                return;
+            }
 
             if let Ok(std_file) = std::fs::read_to_string("std.bf") {
                 let std_data: Vec<char> = std_file.chars().collect();
                 let mut std_lexer = Lexer::new(std_data);
-                std_lexer.tokenize(&vec![String::from("std")], &compiler, false).expect("Invalid std stuff happened :(");
+                if let Err(errors) = std_lexer.tokenize(&vec![String::from("std")], &compiler, false) {
+                        for error in &errors {
+                        println!("{}", error);
+                    }
+
+                    println!("\n{} errors, yay!", errors.len());
+                    return;
+                }
             }else{
                 println!("WARNING: Standard library could not be loaded");
             }

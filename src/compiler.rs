@@ -126,6 +126,8 @@ impl Compiler {
             commands.append(&mut compile_node(self, &token, &String::new())?);
         }
 
+        //println!("{}: {:?}", element, &commands);
+
         self.compiled.lock().unwrap().insert(element, commands);
         if let Some(dependants) = self.dependencies.lock().unwrap().remove(&element) {
             for dependant in dependants {

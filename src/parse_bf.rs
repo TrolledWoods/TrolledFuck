@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use crate::Compiler;
+use crate::Error;
 
 #[derive(Debug)]
 pub enum TokenType {
@@ -138,16 +139,40 @@ impl std::fmt::Display for Loc {
     }
 }
 
+struct LexerContext {
+    errors: Vec<Error>,
+    dependencies: HashSet<String>,
+    commands: Vec<Token>,
+    path: Vec<String>
+}
+
+impl LexerContext {
+    fn new(path: Vec<String>) -> LexerContext {
+        LexerContext {
+            errors: Vec::new(),
+            dependencies: HashSet::new(),
+            commands: Vec::new(),
+            path: path
+        }
+    }
+
+    fn add_error(&mut self, loc: Loc, message: String) {
+        self.errors.push(Error::new(loc, message));
+    }
+}
+
 pub struct Lexer {
     text: Vec<char>,
-    loc: Loc
+    loc: Loc,
+    n_invalid_macro_names: usize
 }
 
 impl Lexer {
     pub fn new(text: Vec<char>) -> Lexer {
         Lexer {
             text: text,
-            loc: Loc::zero()
+            loc: Loc::zero(),
+            n_invalid_macro_names: 0
         }
     }
 
@@ -180,15 +205,25 @@ impl Lexer {
         }
     }
 
-    fn parse_value(&mut self, compiler: &Compiler, path: &Vec<String>, commands: &mut Vec<Token>, dependencies: &mut HashSet<String>) -> Result<(), String> {
+    fn parse_value(
+            &mut self, 
+            compiler: &Compiler, 
+            context: &mut LexerContext) {
         if let Some(c) = self.text.get(self.loc.index) {
+            let start = self.loc;
             self.loc.move_with(*c);
             match *c {
                 '!' => {
-                    commands.push(Token::new_debug(self.loc));
+                    context.commands.push(Token::new_debug(self.loc));
                 },
                 '#' => {
-                    let mut identifier = self.read_identifier().ok_or_else(|| String::from("Expected identifier"))?;
+                    let mut identifier = match self.read_identifier() {
+                        Some(value) => value,
+                        None => {
+                            context.add_error(start, String::from("Expected identifier"));
+                            return;
+                        }
+                    };
                     
                     if identifier == "use" {
                         // This just defines a macro that is set to another macro, 
@@ -197,8 +232,17 @@ impl Lexer {
 
                         // Get the path of the macro to import into current scope
                         let start = self.loc;
-                        let mut identifier = self.read_identifier().ok_or_else(|| String::from("Expected identifier"))?;
-                        pathify_identifier(path, &mut identifier)?;
+                        let mut identifier = match self.read_identifier() {
+                            Some(value) => value,
+                            None => {
+                                context.add_error(start, String::from("Expected identifier"));
+                                return;
+                            }
+                        };
+
+                        if let Err(msg) = pathify_identifier(&context.path, &mut identifier) {
+                            context.add_error(start, msg);
+                        }
 
                         // Create some strings that are going to be passed into datastructures later
                         let identifier_dep = String::from(&identifier);
@@ -207,7 +251,7 @@ impl Lexer {
                         // Figure out the path that the import is going to be set to
                         let mut name = String::from(identifier.split('/').rev().next().unwrap());
                         name.insert(0, '/');
-                        name.insert_str(0, &path.join("/")[..]);
+                        name.insert_str(0, &context.path.join("/")[..]);
                         
                         // Add the macro to the compilers list of things to compile
                         let mut dep = HashSet::with_capacity(1);
@@ -218,10 +262,12 @@ impl Lexer {
                                 dep
                             );
                     }else{
-                        pathify_identifier(path, &mut identifier)?;
+                        if let Err(msg) = pathify_identifier(&context.path, &mut identifier) {
+                            context.add_error(start, msg);
+                        }
 
-                        dependencies.insert(String::from(&identifier));
-                        commands.push(Token::new_macro(self.loc, identifier));
+                        context.dependencies.insert(String::from(&identifier));
+                        context.commands.push(Token::new_macro(self.loc, identifier));
                     }
                 },
                 '"' => {
@@ -230,78 +276,121 @@ impl Lexer {
                     while let Some(c) = self.text.get(self.loc.index) {
                         self.loc.move_with(*c);
                         if *c == '"' {
-                            commands.push(Token::new_str(start, String::from(contents)));
-                            break;
+                            context.commands.push(Token::new_str(start, String::from(contents)));
+                            return;
                         }else if *c == '\\' {
                             if let Some(next_c) = self.text.get(self.loc.index) {
+                                let start = self.loc;
                                 self.loc.move_with(*next_c);
 
                                 match *next_c {
                                     'n' => contents.push('\n'),
                                     't' => contents.push('\t'),
-                                    _ => return Err(String::from("Invalid character after '\\'"))
+                                    _ => {
+                                        context.add_error(
+                                            start, String::from("Invalid character after '\\'")
+                                        );
+                                    }
                                 }
                             }else {
-                                return Err(String::from("File ended before '\\' could be resolved"));
+                                context.add_error(
+                                    start, String::from("File ended before '\\' could be resolved")
+                                );
                             }
                         }else{
                             contents.push(*c);
                         }
                     }
-                    // return Err(String::from("Expected '\"' to end string"));
+                    
+                    context.add_error(self.loc, String::from("Expected '\"' to end string"));
                 },
                 '[' => {
-                    self.read_loop(compiler, path, commands, dependencies)?;
+                    self.read_loop(compiler, context);
                 },
-                '+' => commands.push(Token::new_increment(self.loc, 1)),
-                '-' => commands.push(Token::new_decrement(self.loc, 1)),
-                '<' => commands.push(Token::new_shift_left(self.loc, 1)),
-                '>' => commands.push(Token::new_shift_right(self.loc, 1)),
-                ',' => commands.push(Token::new_read(self.loc)),
-                '.' => commands.push(Token::new_print(self.loc)),
+                '+' => context.commands.push(Token::new_increment(self.loc, 1)),
+                '-' => context.commands.push(Token::new_decrement(self.loc, 1)),
+                '<' => context.commands.push(Token::new_shift_left(self.loc, 1)),
+                '>' => context.commands.push(Token::new_shift_right(self.loc, 1)),
+                ',' => context.commands.push(Token::new_read(self.loc)),
+                '.' => context.commands.push(Token::new_print(self.loc)),
                 _ => {}
             }
         }
-
-        Ok(())
     }
 
     // This function also generates the initial command for the loop, so don't worry ;)
-    fn read_loop(&mut self, compiler: &Compiler, path: &Vec<String>, commands: &mut Vec<Token>, dependencies: &mut HashSet<String>) -> Result<(), String> {
+    fn read_loop(&mut self, compiler: &Compiler, context: &mut LexerContext) {
         let start = self.loc;
-        let mut contents = Vec::new();
-
+        let contents_start = context.commands.len();
+        
         while let Some(c) = self.text.get(self.loc.index) {
             if *c == ']' {
                 self.loc.move_with(*c);
-                commands.push(Token::new_loop(start, contents));
-                return Ok(());
+
+                // Get the range of commands in the context that are withing the loop
+                let mut contents = Vec::with_capacity(context.commands.len() - contents_start);
+                while context.commands.len() > contents_start {
+                    // .unwrap() is safe since we know the length is larger than 0 
+                    // since contents_start has to be >= 0
+                    contents.insert(0, context.commands.pop().unwrap());
+                }
+                
+                context.commands.push(
+                    Token::new_loop(start, contents)
+                );
+                return;
             }else{
-                self.parse_value(compiler, path, &mut contents, dependencies)?;
+                self.parse_value(compiler, context);
             }
         }
 
-        Err(String::from("Expected ']' to end loop"))
+        context.add_error(start, String::from("Expected ']' to end loop"));
     }
 
-    pub fn tokenize(&mut self, name: &Vec<String>, compiler: &Compiler, terminatable: bool) -> Result<(), String> {
-        let mut commands = Vec::new();
-        let mut dependencies = HashSet::new();
+    pub fn tokenize(&mut self, name: &Vec<String>, compiler: &Compiler, terminatable: bool)
+            -> Result<(), Vec<Error>> {
+        let mut context = LexerContext::new(name.clone());
+        
 
         while let Some(c) = self.text.get(self.loc.index) {
+            let start = self.loc;
             if *c == ':' {
                 self.loc.add_n_chars(1);
 
                 // A macro definition!
-                let identifier = self.read_identifier().ok_or_else(|| String::from("Expected identifier"))?;
+                let identifier_start = self.loc;
+                let identifier = match self.read_identifier() {
+                    Some(value) => value,
+                    None => {
+                        context.add_error(
+                            identifier_start, 
+                            String::from("Expected an identifier for the macro!"));
+                        self.n_invalid_macro_names += 1;
+                        "*".repeat(self.n_invalid_macro_names)
+                    }
+                };
+
                 if identifier.contains("/") {
-                    return Err(String::from("Cannot define a macro with ';' in identifier"));
+                    context.add_error(
+                        identifier_start, 
+                        String::from("Cannot define a macro with '/' in identifier")
+                    );
                 }
                 self.skip_whitespace();
-                let c = self.text.get(self.loc.index)
-                    .ok_or_else(|| String::from("Unexpected end of file, expected '{'"))?;
+                let opening_bracket_loc = self.loc;
+                let c = match self.text.get(self.loc.index) {
+                    Some(value) => value,
+                    None => {
+                        context.add_error(
+                            opening_bracket_loc, 
+                            String::from("Unexpected end of file, expected macro body definition")
+                        );
+                        return Err(context.errors);
+                    }
+                };
+                
                 if *c != '{' {
-                    return Err(String::from("Expected '{'"));
+                    context.add_error(opening_bracket_loc, String::from("Expected '{'"));
                 }
                 self.loc.move_with(*c);
 
@@ -314,14 +403,18 @@ impl Lexer {
                 if terminatable {
                     break;
                 }else{
-                    return Err(String::from("Unexpected '}'"));
+                    context.add_error(start, String::from("Unexpected '}'"));
                 }
             }else{
-                self.parse_value(compiler, name, &mut commands, &mut dependencies)?;
+                self.parse_value(compiler, &mut context);
             }
         }
 
-        compiler.add_compilation_unit(name.join("/"), commands, dependencies);
+        if context.errors.len() > 0 {
+            return Err(context.errors);
+        }
+
+        compiler.add_compilation_unit(name.join("/"), context.commands, context.dependencies);
 
         Ok(())
     }
