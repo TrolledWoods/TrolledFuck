@@ -213,6 +213,14 @@ impl Lexer {
             let start = self.loc;
             self.loc.move_with(*c);
             match *c {
+                ';' => {
+                    while let Some(c) = self.text.get(self.loc.index) {
+                        self.loc.index += 1;
+                        if *c == '\n' {
+                            return;
+                        }
+                    }
+                },
                 '!' => {
                     context.commands.push(Token::new_debug(self.loc));
                 },
