@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use crate::Compiler;
 use crate::Error;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum TokenType {
     Str(String, bool),
     Macro(String),
@@ -16,7 +16,7 @@ pub enum TokenType {
     Debug
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Token {
     pub src_loc: Loc,
     pub data: TokenType
@@ -339,6 +339,43 @@ impl Lexer {
                         context.dependencies.insert(String::from(&identifier));
                         context.commands.push(Token::new_macro(self.loc, identifier));
                     }
+                },
+                '(' => {
+                    let start = self.loc;
+                    let contents_start = context.commands.len();
+                    
+                    while let Some(c) = self.text.get(self.loc.index) {
+                        if *c == ')' {
+                            self.loc.move_with(*c);
+
+                            // Get the range of commands in the context that are within the repeat
+                            let mut contents = Vec::with_capacity(context.commands.len() - contents_start);
+                            while context.commands.len() > contents_start {
+                                // .unwrap() is safe since we know the length is larger than 0 
+                                // since contents_start has to be >= 0
+                                contents.insert(0, context.commands.pop().unwrap());
+                            }
+                            
+                            let count = match self.try_parse_number(context) {
+                                Some(value) => value as usize,
+                                None => {
+                                    context.add_error(self.loc, String::from("Expected number of repitions"));
+                                    return;
+                                }
+                            };
+
+                            for _ in 0..count {
+                                for content in contents.iter() {
+                                    context.commands.push(content.clone());
+                                }
+                            }
+                            return;
+                        }else{
+                            self.parse_value(compiler, context);
+                        }
+                    }
+
+                    context.add_error(start, String::from("Expected ')' to end the repeat block"));
                 },
                 '0' => {
                     if let Some(c) = self.text.get(self.loc.index) {
