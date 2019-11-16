@@ -309,6 +309,10 @@ impl Lexer {
             let start = self.loc;
             self.loc.move_with(*c);
             match *c {
+                character if character.is_whitespace() => {},
+                '🧙' => {
+                    println!("{}: Magico!", self.loc);
+                },
                 ';' => {
                     while let Some(c) = self.text.get(self.loc.index) {
                         self.loc.index += 1;
@@ -423,7 +427,31 @@ impl Lexer {
                     self.parse_str(context, true);
                 },
                 '[' => {
-                    self.read_loop(compiler, context);
+                    let start = self.loc;
+                    let contents_start = context.commands.len();
+                    
+                    while let Some(c) = self.text.get(self.loc.index) {
+                        if *c == ']' {
+                            self.loc.move_with(*c);
+
+                            // Get the range of commands in the context that are withing the loop
+                            let mut contents = Vec::with_capacity(context.commands.len() - contents_start);
+                            while context.commands.len() > contents_start {
+                                // .unwrap() is safe since we know the length is larger than 0 
+                                // since contents_start has to be >= 0
+                                contents.insert(0, context.commands.pop().unwrap());
+                            }
+                            
+                            context.commands.push(
+                                Token::new_loop(start, contents)
+                            );
+                            return;
+                        }else{
+                            self.parse_value(compiler, context);
+                        }
+                    }
+
+                    context.add_error(start, String::from("Expected ']' to end loop"));
                 },
                 '+' => {
                     let num = self.try_parse_number(context).unwrap_or(1);
@@ -443,38 +471,11 @@ impl Lexer {
                 },
                 ',' => context.commands.push(Token::new_read(self.loc)),
                 '.' => context.commands.push(Token::new_print(self.loc)),
-                _ => {}
-            }
-        }
-    }
-
-    // This function also generates the initial command for the loop, so don't worry ;)
-    fn read_loop(&mut self, compiler: &Compiler, context: &mut LexerContext) {
-        let start = self.loc;
-        let contents_start = context.commands.len();
-        
-        while let Some(c) = self.text.get(self.loc.index) {
-            if *c == ']' {
-                self.loc.move_with(*c);
-
-                // Get the range of commands in the context that are withing the loop
-                let mut contents = Vec::with_capacity(context.commands.len() - contents_start);
-                while context.commands.len() > contents_start {
-                    // .unwrap() is safe since we know the length is larger than 0 
-                    // since contents_start has to be >= 0
-                    contents.insert(0, context.commands.pop().unwrap());
+                _ => {
+                    context.add_error(self.loc, String::from(format!("Unexpected token '{}'", *c)))
                 }
-                
-                context.commands.push(
-                    Token::new_loop(start, contents)
-                );
-                return;
-            }else{
-                self.parse_value(compiler, context);
             }
         }
-
-        context.add_error(start, String::from("Expected ']' to end loop"));
     }
 
     pub fn tokenize(&mut self, name: &Vec<String>, compiler: &Compiler, terminatable: bool)

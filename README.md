@@ -19,10 +19,10 @@ A compiler argument can be added by writing ``*`` followed by the name of the ar
 
 ## Syntax
 ```
-Anything that isn't an actual program character is a comment
-; However, for clarity, use a semicolon to comment out the line after the semicolon.
-; This allows you to use special characters, like '<>.,[]#' in a comment without
-; Them being treated as code
+; Semicolons turn the rest of the line into a comment.
+; BrainFuck has this thing where anything that's not code
+; is automagically a comment. This does not happen here, because
+; it makes the error messages worse, which we don't really want.
 
 ; A colon followed by an identifier and brackets define a macro
 ; These can be defined in any order
