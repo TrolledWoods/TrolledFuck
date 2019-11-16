@@ -477,7 +477,7 @@ impl Lexer {
             }
         }
     }
-' =>
+
     pub fn tokenize(&mut self, name: &Vec<String>, compiler: &Compiler, terminatable: bool)
             -> Result<(), Vec<Error>> {
         let mut context = LexerContext::new(name.clone());
