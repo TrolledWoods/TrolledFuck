@@ -205,35 +205,47 @@ impl Lexer {
         }
     }
 
-    fn parse_str(&mut self, context: &mut LexerContext, is_safe: bool) {
-        let mut contents = String::new();
-        let start = self.loc;
-        while let Some(c) = self.text.get(self.loc.index) {
+    fn parse_char(&mut self, context: &mut LexerContext) -> Option<char> {
+        if let Some(c) = self.text.get(self.loc.index) {
             self.loc.move_with(*c);
-            if *c == '"' {
-                context.commands.push(Token::new_str(start, String::from(contents), is_safe));
-                return;
-            }else if *c == '\\' {
+            if *c == '\\' {
                 if let Some(next_c) = self.text.get(self.loc.index) {
                     let start = self.loc;
                     self.loc.move_with(*next_c);
 
                     match *next_c {
-                        'n' => contents.push('\n'),
-                        't' => contents.push('\t'),
+                        'n' => Some('\n'),
+                        't' => Some('\t'),
                         _ => {
                             context.add_error(
                                 start, String::from("Invalid character after '\\'")
                             );
+                            None
                         }
                     }
                 }else {
                     context.add_error(
-                        start, String::from("File ended before '\\' could be resolved")
+                        self.loc, String::from("File ended before '\\' could be resolved")
                     );
+                    None
                 }
             }else{
-                contents.push(*c);
+                Some(*c)
+            }
+        }else{
+            None
+        }
+    }
+
+    fn parse_str(&mut self, context: &mut LexerContext, is_safe: bool) {
+        let mut contents = String::new();
+        let start = self.loc;
+        while let Some(c) = self.parse_char(context) {
+            if c == '"' {
+                context.commands.push(Token::new_str(start, String::from(contents), is_safe));
+                return;
+            }else{
+                contents.push(c);
             }
         }
         
@@ -241,6 +253,28 @@ impl Lexer {
     }
 
     fn try_parse_number(&mut self, context: &mut LexerContext) -> Option<u8> {
+        if let Some(c) = self.text.get(self.loc.index) {
+            if *c == '\'' {
+                self.loc.add_n_chars(1);
+                let c = self.parse_char(context);
+
+                match c {
+                    Some(c) => {
+                        if c.is_ascii() { 
+                            return Some(c as u8);
+                        }else{
+                            context.add_error(self.loc, String::from("Expected ASCII character"));
+                            return None;
+                        }
+                    },
+                    None => {
+                        context.add_error(self.loc, String::from("Expected character"));
+                        return None;
+                    }
+                }
+            }
+        }
+
         let mut n_digits = 0;
         let mut number = 0u8;
 
