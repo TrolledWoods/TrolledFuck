@@ -311,7 +311,7 @@ impl Lexer {
             match *c {
                 character if character.is_whitespace() => {},
                 '🧙' => {
-                    println!("{}: Magico!", self.loc);
+                    println!("{}: Ayoyoyo Wololo!", self.loc);
                 },
                 ';' => {
                     while let Some(c) = self.text.get(self.loc.index) {
@@ -477,7 +477,7 @@ impl Lexer {
             }
         }
     }
-
+' =>
     pub fn tokenize(&mut self, name: &Vec<String>, compiler: &Compiler, terminatable: bool)
             -> Result<(), Vec<Error>> {
         let mut context = LexerContext::new(name.clone());
