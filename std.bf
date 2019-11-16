@@ -11,9 +11,7 @@ MAGIC
     "Or well, it can, but it isn't really recommended\n"
     "Also, it doesn't do anything!\n"
 #std/print/end
-
-; Clear the marker's stuff
-#std/marker/clear_left+
+#std/print/cleanup
 
 :marker {
     :set {

@@ -188,7 +188,7 @@ fn set_to_zero(commands: &mut Vec<u8>) {
     commands.append(&mut create_loop(vec![crate::instructions::DECREMENT]));
 }
 
-fn compile_str(string: &str) -> Result<Vec<u8>, String> {
+fn compile_str(string: &str, mem_safe: bool) -> Result<Vec<u8>, String> {
     use crate::instructions::*;
     let mut commands = Vec::new();
 
@@ -200,9 +200,17 @@ fn compile_str(string: &str) -> Result<Vec<u8>, String> {
         let size = c as u8;
 
         if i < string.len() - 1 {
-            let sqrt = (size as f32).sqrt().floor() as u8;
+            if i == 0 && mem_safe {
+                set_to_zero(&mut commands);
+            }
+
+            // Shift right and set to 0
             commands.push(SHIFT_RIGHT);
-            set_to_zero(&mut commands);
+            if mem_safe {
+                set_to_zero(&mut commands);
+            }
+
+            let sqrt = (size as f32).sqrt().floor() as u8;
             for _ in 0..sqrt {
                 commands.push(INCREMENT);
             }
@@ -216,14 +224,21 @@ fn compile_str(string: &str) -> Result<Vec<u8>, String> {
             loop_commands.push(SHIFT_RIGHT);
             commands.append(&mut create_loop(loop_commands));
 
-            commands.push(SHIFT_LEFT);
-
             let fault = size - sqrt * sqrt;
-            for _ in 0..fault {
-                commands.push(INCREMENT);
+
+            if fault != 0 {
+                commands.push(SHIFT_LEFT);
+
+                for _ in 0..fault {
+                    commands.push(INCREMENT);
+                }
+                
+                commands.push(SHIFT_RIGHT);
             }
         }else{
-            set_to_zero(&mut commands);
+            if mem_safe {
+                set_to_zero(&mut commands);
+            }
 
             if size >= 0x88 {
                 // Invert the size
@@ -237,9 +252,9 @@ fn compile_str(string: &str) -> Result<Vec<u8>, String> {
                     commands.push(INCREMENT);
                 }
             }
-        }
 
-        commands.push(SHIFT_RIGHT);
+            commands.push(SHIFT_RIGHT);
+        }
     }
 
     Ok(commands)
@@ -250,7 +265,7 @@ pub fn compile_node(macros: &Compiler, token: &Token, src_path: &String) -> Resu
     use TokenType::*;
     match &token.data {
         Debug => Ok(vec![DEBUG]),
-        Str(string) => Ok(compile_str(&string[..])?),
+        Str(string, is_safe) => Ok(compile_str(&string[..], *is_safe)?),
         Macro(name) => {
             Ok(macros.get_compiled_value(&name[..]).expect("Dependency wasn't compiled"))
         },

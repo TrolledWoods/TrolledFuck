@@ -4,7 +4,7 @@ use crate::Error;
 
 #[derive(Debug)]
 pub enum TokenType {
-    Str(String),
+    Str(String, bool),
     Macro(String),
     Loop(Vec<Token>),
     Increment(u8),
@@ -30,10 +30,10 @@ impl Token {
         }
     } 
 
-    pub fn new_str(loc: Loc, data: String) -> Token {
+    pub fn new_str(loc: Loc, data: String, is_safe: bool) -> Token {
         Token {
             src_loc: loc,
-            data: TokenType::Str(data)
+            data: TokenType::Str(data, is_safe)
         }
     }
 
@@ -205,6 +205,41 @@ impl Lexer {
         }
     }
 
+    fn parse_str(&mut self, context: &mut LexerContext, is_safe: bool) {
+        let mut contents = String::new();
+        let start = self.loc;
+        while let Some(c) = self.text.get(self.loc.index) {
+            self.loc.move_with(*c);
+            if *c == '"' {
+                context.commands.push(Token::new_str(start, String::from(contents), is_safe));
+                return;
+            }else if *c == '\\' {
+                if let Some(next_c) = self.text.get(self.loc.index) {
+                    let start = self.loc;
+                    self.loc.move_with(*next_c);
+
+                    match *next_c {
+                        'n' => contents.push('\n'),
+                        't' => contents.push('\t'),
+                        _ => {
+                            context.add_error(
+                                start, String::from("Invalid character after '\\'")
+                            );
+                        }
+                    }
+                }else {
+                    context.add_error(
+                        start, String::from("File ended before '\\' could be resolved")
+                    );
+                }
+            }else{
+                contents.push(*c);
+            }
+        }
+        
+        context.add_error(self.loc, String::from("Expected '\"' to end string"));
+    }
+
     fn parse_value(
             &mut self, 
             compiler: &Compiler, 
@@ -278,39 +313,16 @@ impl Lexer {
                         context.commands.push(Token::new_macro(self.loc, identifier));
                     }
                 },
-                '"' => {
-                    let mut contents = String::new();
-                    let start = self.loc;
-                    while let Some(c) = self.text.get(self.loc.index) {
-                        self.loc.move_with(*c);
+                '0' => {
+                    if let Some(c) = self.text.get(self.loc.index) {
                         if *c == '"' {
-                            context.commands.push(Token::new_str(start, String::from(contents)));
-                            return;
-                        }else if *c == '\\' {
-                            if let Some(next_c) = self.text.get(self.loc.index) {
-                                let start = self.loc;
-                                self.loc.move_with(*next_c);
-
-                                match *next_c {
-                                    'n' => contents.push('\n'),
-                                    't' => contents.push('\t'),
-                                    _ => {
-                                        context.add_error(
-                                            start, String::from("Invalid character after '\\'")
-                                        );
-                                    }
-                                }
-                            }else {
-                                context.add_error(
-                                    start, String::from("File ended before '\\' could be resolved")
-                                );
-                            }
-                        }else{
-                            contents.push(*c);
+                            self.loc.move_with(*c);
+                            self.parse_str(context, false);
                         }
                     }
-                    
-                    context.add_error(self.loc, String::from("Expected '\"' to end string"));
+                },
+                '"' => {
+                    self.parse_str(context, true);
                 },
                 '[' => {
                     self.read_loop(compiler, context);
