@@ -240,6 +240,33 @@ impl Lexer {
         context.add_error(self.loc, String::from("Expected '\"' to end string"));
     }
 
+    fn try_parse_number(&mut self, context: &mut LexerContext) -> Option<u8> {
+        let mut n_digits = 0;
+        let mut number = 0u8;
+
+        while let Some(c) = self.text.get(self.loc.index) {
+            if let Some(digit) = c.to_digit(16) {
+                self.loc.add_n_chars(1);
+                n_digits += 1;
+                if n_digits <= 2 {
+                    number *= 16;
+                    number += digit as u8;
+                }else{
+                    context.add_error(self.loc, String::from("Too big number, expected hexadecimal number with max 2 digits"));
+                    return None;
+                }
+            }else{
+                break;
+            }
+        }
+
+        if n_digits > 0 {
+            Some(number)
+        }else{
+            None
+        }
+    }
+
     fn parse_value(
             &mut self, 
             compiler: &Compiler, 
@@ -327,10 +354,22 @@ impl Lexer {
                 '[' => {
                     self.read_loop(compiler, context);
                 },
-                '+' => context.commands.push(Token::new_increment(self.loc, 1)),
-                '-' => context.commands.push(Token::new_decrement(self.loc, 1)),
-                '<' => context.commands.push(Token::new_shift_left(self.loc, 1)),
-                '>' => context.commands.push(Token::new_shift_right(self.loc, 1)),
+                '+' => {
+                    let num = self.try_parse_number(context).unwrap_or(1);
+                    context.commands.push(Token::new_increment(self.loc, num));
+                },
+                '-' => {
+                    let num = self.try_parse_number(context).unwrap_or(1);
+                    context.commands.push(Token::new_decrement(self.loc, num));
+                },
+                '<' => {
+                    let num = self.try_parse_number(context).unwrap_or(1);
+                    context.commands.push(Token::new_shift_left(self.loc, num));
+                },
+                '>' => {
+                    let num = self.try_parse_number(context).unwrap_or(1);
+                    context.commands.push(Token::new_shift_right(self.loc, num));
+                },
                 ',' => context.commands.push(Token::new_read(self.loc)),
                 '.' => context.commands.push(Token::new_print(self.loc)),
                 _ => {}
