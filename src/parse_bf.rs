@@ -575,7 +575,7 @@ fn pathify_identifier(path: &Vec<String>, identifier: &mut String) -> Result<(),
         }
 
         let sub_path = &path[0..(path.len() - n_dots)];
-        for (i, elem) in sub_path.iter().enumerate() {
+        for (i, elem) in sub_path.iter().rev().enumerate() {
             if i > 0 {
                 identifier.insert(0, '/');
             }

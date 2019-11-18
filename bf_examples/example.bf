@@ -1,12 +1,8 @@
-:messages {
-    #use std/print/begin
-    #use std/print/end
+#/hi
 
-    :hello_world {
-        #src/messages/begin
-            "Hello world!\n"
-        #src/messages/end
-    }
+:test {
+ :other { <4 }
+ :ei { #./other }
 }
 
-#/messages/hello_world
+:hi { >>..<< }
