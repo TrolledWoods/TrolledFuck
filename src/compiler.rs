@@ -1,6 +1,11 @@
 use std::collections::{ HashMap, HashSet };
 use std::sync::{ Mutex };
-use crate::parse_bf::{ Token, TokenType };
+use crate::parse_bf::{ Token, TokenType, Loc };
+
+pub struct Depender {
+    pub locs: Vec<Loc>,
+    pub id: u16
+}
 
 pub struct Compiler {
     pub id_map: Mutex<HashMap<String, u16>>,
@@ -9,7 +14,7 @@ pub struct Compiler {
     pub n_values: Mutex<u16>,
     pub compiled: Mutex<HashMap<u16, Vec<u8>>>,
     pub not_compiled: Mutex<HashMap<u16, (HashSet<u16>, Vec<Token>)>>,
-    pub dependencies: Mutex<HashMap<u16, Vec<u16>>>
+    pub dependencies: Mutex<HashMap<u16, Vec<Depender>>>
 }
 
 impl Compiler {
@@ -25,18 +30,43 @@ impl Compiler {
         }
     }
 
-    pub fn deploy_compilation_thread(&self) {
-        // std::thread::spawn(
-        //     || {
-        //         while *self.is_finished.lock().unwrap() {
-        //             if let Ok(result) = self.try_compile_one() {
-        //                 if !result {
-        //                     std::thread::sleep_ms(10);
-        //                 }
-        //             }
-        //         }
-        //     }
-        // );
+    pub fn log_unresolved_dependencies(&self) {
+        let dependencies_lock = self.dependencies.lock().unwrap();
+
+        let mut nametable_map = HashMap::new();
+        for id_mapper in self.id_map.lock().unwrap().iter() {
+            nametable_map.insert(*id_mapper.1, String::from(id_mapper.0));
+        }
+
+        let not_compiled_lock = self.not_compiled.lock().unwrap();
+        // Get the unresolved dependencies
+        for dependency in dependencies_lock.iter() {
+            if dependency.1.len() > 0 {
+                // Print the name of the thing that is depended on
+                // but not defined
+                let unresolved_dependency_name = String::from(nametable_map.get(&dependency.0).unwrap());
+
+                // Check if it was actually not defined or just haven't compiled
+                if not_compiled_lock.contains_key(&dependency.0) {
+                    println!("'{}' {}:", unresolved_dependency_name,
+                        ansi_term::Color::Cyan.paint("is defined, but couldn't compile"));
+                }else{
+                    println!("'{}' {}:", unresolved_dependency_name,
+                        ansi_term::Color::Red.paint("is not defined, but code uses it"));
+
+                    
+                }
+
+                // Print all the dependers, since it's not defined
+                for depender in dependency.1 {
+                    let name = String::from(nametable_map.get(&depender.id).unwrap());
+                    println!(" | '{}' uses it at: ", name);
+                    for loc in &depender.locs {
+                        println!(" |  | {}", loc);
+                    }
+                }
+            }
+        }
     }
 
     pub fn get_compiled_value(&self, name: &str) -> Option<Vec<u8>> {
@@ -89,27 +119,27 @@ impl Compiler {
         }
     }
 
-    pub fn add_dependencies(&self, source: u16, dependencies: &HashSet<String>) -> HashSet<u16> {
+    pub fn add_dependencies(&self, source: u16, dependencies: &HashMap<String, Vec<Loc>>) -> HashSet<u16> {
         let mut unresolved = HashSet::new();
         let mut depend = self.dependencies.lock().unwrap();
         for dependency in dependencies {
-            let id = self.get_identifier_or_create(dependency);
+            let id = self.get_identifier_or_create(&dependency.0);
+            let depender = Depender {
+                locs: dependency.1.clone(),
+                id: source
+            };
 
             if let Some(vector) = depend.get_mut(&id) {
                 // The dependency vector exists in the dependency HashMap, so push onto that
                 unresolved.insert(id);
-                vector.push(source);
-                continue;
-            }
-
-            if self.compiled.lock().unwrap().contains_key(&id) {
+                vector.push(depender);
+            }else if self.compiled.lock().unwrap().contains_key(&id) {
                 // It's actually resolved already! :D
-                continue;
+            }else{
+                // It didn't exist in the dependencies, so insert a vector of dependencies onto that
+                unresolved.insert(id);
+                depend.insert(id, vec![depender]);
             }
-
-            // It didn't exist in the dependencies, so insert a vector of dependencies onto that
-            unresolved.insert(id);
-            depend.insert(id, vec![source]);
         }
 
         unresolved
@@ -132,13 +162,13 @@ impl Compiler {
         if let Some(dependants) = self.dependencies.lock().unwrap().remove(&element) {
             for dependant in dependants {
                 let mut lock = self.not_compiled.lock().unwrap();
-                let (dependencies, _) = lock.get_mut(&dependant)
+                let (dependencies, _) = lock.get_mut(&dependant.id)
                                             .expect("compile: Dependant compiled before it's dependency? Makes no sense!");
                 dependencies.remove(&element);
 
                 // If we resolved all their dependencies, hooray!! It can now compile properly
                 if dependencies.len() == 0 {
-                    self.ready_to_compile.lock().unwrap().insert(dependant);
+                    self.ready_to_compile.lock().unwrap().insert(dependant.id);
                 }
             }
         }
@@ -146,7 +176,7 @@ impl Compiler {
         Ok(())
     }
     
-    pub fn add_compilation_unit(&self, name: String, data: Vec<Token>, dependencies: HashSet<String>) {
+    pub fn add_compilation_unit(&self, name: String, data: Vec<Token>, dependencies: HashMap<String, Vec<Loc>>) {
         let id = self.get_identifier_or_create(&name);
         
         let unresolved_dependencies = self.add_dependencies(id, &dependencies);

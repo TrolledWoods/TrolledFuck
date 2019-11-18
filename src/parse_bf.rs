@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use crate::Compiler;
 use crate::Error;
 
@@ -134,14 +134,14 @@ impl Loc {
 
 impl std::fmt::Display for Loc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({}, {})", self.line, self._char)?;
+        write!(f, "({}, {})", self.line + 1, self._char)?;
         Ok(())
     }
 }
 
 struct LexerContext {
     errors: Vec<Error>,
-    dependencies: HashSet<String>,
+    dependencies: HashMap<String, Vec<Loc>>,
     commands: Vec<Token>,
     path: Vec<String>
 }
@@ -150,9 +150,17 @@ impl LexerContext {
     fn new(path: Vec<String>) -> LexerContext {
         LexerContext {
             errors: Vec::new(),
-            dependencies: HashSet::new(),
+            dependencies: HashMap::new(),
             commands: Vec::new(),
             path: path
+        }
+    }
+
+    fn add_dependency(&mut self, string: &str, location: Loc) {
+        if let Some(list) = self.dependencies.get_mut(string) {
+            list.push(location);
+        }else{
+            self.dependencies.insert(String::from(string), vec![location]);
         }
     }
 
@@ -315,7 +323,7 @@ impl Lexer {
                 },
                 ';' => {
                     while let Some(c) = self.text.get(self.loc.index) {
-                        self.loc.index += 1;
+                        self.loc.move_with(*c);
                         if *c == '\n' {
                             return;
                         }
@@ -325,6 +333,7 @@ impl Lexer {
                     context.commands.push(Token::new_debug(self.loc));
                 },
                 '#' => {
+                    let identifier_start = self.loc;
                     let mut identifier = match self.read_identifier() {
                         Some(value) => value,
                         None => {
@@ -362,8 +371,8 @@ impl Lexer {
                         name.insert_str(0, &context.path.join("/")[..]);
                         
                         // Add the macro to the compilers list of things to compile
-                        let mut dep = HashSet::with_capacity(1);
-                        dep.insert(identifier_dep);
+                        let mut dep = HashMap::with_capacity(1);
+                        dep.insert(identifier_dep, vec![start]);
                         compiler.add_compilation_unit(
                                 String::from(name), 
                                 vec![Token::new_macro(start, identifier_token)], 
@@ -374,8 +383,8 @@ impl Lexer {
                             context.add_error(start, msg);
                         }
 
-                        context.dependencies.insert(String::from(&identifier));
-                        context.commands.push(Token::new_macro(self.loc, identifier));
+                        context.add_dependency(&identifier[..], identifier_start);
+                        context.commands.push(Token::new_macro(identifier_start, identifier));
                     }
                 },
                 '(' => {

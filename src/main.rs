@@ -167,7 +167,7 @@ fn main() {
                         println!("{}", error);
                     }
 
-                    println!("\n{} errors, yay!", errors.len());
+                    println!("\n{} errors in std, \nwhat are you playing around with the standard library for, fool!?", errors.len());
                     return;
                 }
             }else{
@@ -175,7 +175,11 @@ fn main() {
             }
 
             compiler.finish_compilation().expect("Invalid compilation");
-            assert!(compiler.is_done(), "All dependencies couldn't be resolved");
+            
+            if!compiler.is_done() {
+                compiler.log_unresolved_dependencies();
+                return;
+            }
 
             compiler.get_compiled_value("src").expect("Didn't compile! :(")
         }
