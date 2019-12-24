@@ -84,9 +84,12 @@ like how to work with the limitations of bf to produce interesting results.
 ```
 Output: ``bbc``
 
-There is one more thing, and that is the debugging symbol, '!'. Placing this in your code
+## Debugging
+Placing a '!' in your code
 will make it print out the memory at that location. In that way, it's like running
 your code with ``*debug`` but only printing the debug information at the '!'.
+This command does nothing at all when running the program in debug mode.
+
 ```
 ; A program designed to show the inner workings of the strings
 "H" !
@@ -122,6 +125,56 @@ Memory: 00 48 65 6C 6C 6F 00 00 00 00 00 00 00
 instr: .262, mem: ...6 | DEBUG_DUMP
 Memory: 48 65 6C 6C 6F 21 00 00 00 00 00 00 00
                           ^ ...6
+```
+## Repetitions
+It happens quite often that you want to repeat a command or set of commands. To alleviate this problem, you can put a byte formatted in hexadecimal after any command to repeat it that many times.
+```
++5 !
+>5 !
++10 !
+```
+
+Output:
+```
+instr: ...5, mem: ...0 | DEBUG_DUMP
+Memory: 00 00 00 00 00 00 05 00 00 00 00 00 00
+                          ^ ...0
+
+instr: ...B, mem: ...5 | DEBUG_DUMP
+Memory: 00 05 00 00 00 00 00 00 00 00 00 00 00
+                          ^ ...5
+
+instr: ..1C, mem: ...5 | DEBUG_DUMP
+Memory: 00 05 00 00 00 00 10 00 00 00 00 00 00
+                          ^ ...5
+```
+
+It is also quite common to want to increment/decrement a value by the ascii code of a character. Therefore, this is also possible by adding ``'a``, ``'b`` or ``'`` + any other ascii character whose code is the number of repetitions you want that code to run.
+
+```
++'a . >
++'b . >
++'c .
+```
+
+Output:
+```
+abc
+```
+
+Last but not least, you might want to repeat several commands a certain number of times. This is also possible, by surrounding the commands you want to repeat with parenthesees, ``()``, + the number of times you want them to repeat.
+
+```
+(
+    +'a . > 
+    +'b . > 
+    +'c . >
+)5
+```
+
+Output:
+```
+abcabcabcabcabc
 ```
 
 ## STD
